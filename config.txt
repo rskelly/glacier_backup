@@ -1,0 +1,8 @@
+{
+	"AWS_ACCESS_KEY_ID": "awsaccesskey",
+	"AWS_SECRET_ACCESS_KEY": "awssecretkey",
+	"root": "/path/to/files",
+	"bucket": "s3://bucket/path",
+	"vault_name": "myvault",
+	"file_filter": ".*"
+}
