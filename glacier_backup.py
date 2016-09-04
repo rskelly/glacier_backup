@@ -135,7 +135,7 @@ def get_inventory(client, job_id = None):
 		print 'Failed to load inventory:', e.__str__()
 		sys.exit(1)
 
-	if len(files) == 0:
+	if len(files) == 0 and job_id:
 		result = client.get_job_output(
 			vaultName = vault_name,
 			jobId = job_id
@@ -396,6 +396,7 @@ def upload_file(client, file, hash):
 		    	archiveSize = str(os.path.getsize(path)),
 		    	checksum = hash
 			)
+			break
 		except Exception, e:
 			print e.__str__()
 			print "Trying again."
@@ -421,6 +422,7 @@ def run(config, regenerate = False, skipInventory = False):
 	init_db()
 	client = init_client()
 
+	job_id = None
 	if not skipInventory:
 		# Load the inventory job ID or None if regenerate is chosen, or
 		# the ID does not exist.
@@ -448,14 +450,10 @@ def run(config, regenerate = False, skipInventory = False):
 				print e
 			time.sleep(600)
 
-		# Merge the inventory with the local database.
-		print 'Getting inventory.'
-		get_inventory(client, job_id)
-
-		# Compute the list of files that have not been uploaded.
-		print 'Computing upload list.'
-		uploads = get_new_files(client, job_id)
-		print len(uploads), ' files will be uploaded'
+	# Compute the list of files that have not been uploaded.
+	print 'Computing upload list.'
+	uploads = get_new_files(client, job_id)
+	print len(uploads), ' files will be uploaded'
 
 	# Upload files.
 	print 'Uploading...'
