@@ -220,7 +220,7 @@ def get_local_files():
 			if row and len(row) == 3:
 				#print '...in db'
 				if row[1]:
-					print '...already has an archive ID.'
+					#print '...already has an archive ID.'
 					continue
 				files[p] = {'path' : row[0], 'archiveId' : row[1], 'hash' : row[2]}
 			else:
@@ -363,34 +363,48 @@ def upload_file(client, file, hash):
 		data = f.read(size)
 		start = 0
 		end = len(data) - 1
-		while len(data) > 0:
-			print 'Uploading bytes', start, 'to', end
-			checksum = treehashd(data)
-			response = client.upload_multipart_part(
-				vaultName = vault_name,
-				uploadId = upload_id,
-				range = 'bytes %d-%d/*' % (start, end),
-				body = data,
-				checksum = checksum
-			)
-			if response['checksum'] != checksum:
-				raise Exception('Checksum mismatch: %s %s' % (response['checksum'], checksum))
-			data = f.read(size)
-			start = start + size
-			end = start + len(data) - 1
+		tries = 10
+		while len(data) > 0 and tries > 0:
+			try:
+				print 'Uploading bytes', start, 'to', end
+				checksum = treehashd(data)
+				response = client.upload_multipart_part(
+					vaultName = vault_name,
+					uploadId = upload_id,
+					range = 'bytes %d-%d/*' % (start, end),
+					body = data,
+					checksum = checksum
+				)
+				if response['checksum'] != checksum:
+					raise Exception('Checksum mismatch: %s %s' % (response['checksum'], checksum))
+				data = f.read(size)
+				start = start + size
+				end = start + len(data) - 1
+			except Exception, e:
+				print e.__str__()
+				print "Trying again."
+				tries -= 1
 
-	print 'Completing upload...'
-	response = client.complete_multipart_upload(
- 		vaultName = vault_name,
-    	uploadId = upload_id,
-    	archiveSize = str(os.path.getsize(path)),
-    	checksum = hash
-	)
+
+	tries = 10
+	while tries > 0:
+		try:
+			print 'Completing upload...'
+			response = client.complete_multipart_upload(
+		 		vaultName = vault_name,
+		    	uploadId = upload_id,
+		    	archiveSize = str(os.path.getsize(path)),
+		    	checksum = hash
+			)
+		except Exception, e:
+			print e.__str__()
+			print "Trying again."
+			tries -= 1
 
 	return response
 
 
-def run(config, regenerate = False):
+def run(config, regenerate = False, skipInventory = False):
 	'''
 	Run the backup job. If regenerate is True, ignores the stored
 	inventory job ID and requests a new inventory. The function will
@@ -407,40 +421,41 @@ def run(config, regenerate = False):
 	init_db()
 	client = init_client()
 
-	# Load the inventory job ID or None if regenerate is chosen, or
-	# the ID does not exist.
-	try:
-		job_id = None if regenerate else get_inventory_job_id()
-		print "Inventory job ID", job_id
-	except: pass
-
-	# If the job ID doesn't exist, start a new inventory job.
-	if not job_id:	
-		print 'Generating inventory.'
-		job_id = start_inventory(client)
-		save_inventory_job_id(job_id)
-	if not job_id:
-		raise Exception('Failed to start inventory job.')
-	
-	# Check for completion of the inventory job.
-	while True:
-		print 'Checking inventory job.'
+	if not skipInventory:
+		# Load the inventory job ID or None if regenerate is chosen, or
+		# the ID does not exist.
 		try:
-			if check_inventory(client, job_id):
-				print '...complete.'
-				break
-		except Exception, e:
-			print e
-		time.sleep(600)
+			job_id = None if regenerate else get_inventory_job_id()
+			print "Inventory job ID", job_id
+		except: pass
 
-	# Merge the inventory with the local database.
-	print 'Getting inventory.'
-	get_inventory(client, job_id)
+		# If the job ID doesn't exist, start a new inventory job.
+		if not job_id:	
+			print 'Generating inventory.'
+			job_id = start_inventory(client)
+			save_inventory_job_id(job_id)
+		if not job_id:
+			raise Exception('Failed to start inventory job.')
+		
+		# Check for completion of the inventory job.
+		while True:
+			print 'Checking inventory job.'
+			try:
+				if check_inventory(client, job_id):
+					print '...complete.'
+					break
+			except Exception, e:
+				print e
+			time.sleep(600)
 
-	# Compute the list of files that have not been uploaded.
-	print 'Computing upload list.'
-	uploads = get_new_files(client, job_id)
-	print len(uploads), ' files will be uploaded'
+		# Merge the inventory with the local database.
+		print 'Getting inventory.'
+		get_inventory(client, job_id)
+
+		# Compute the list of files that have not been uploaded.
+		print 'Computing upload list.'
+		uploads = get_new_files(client, job_id)
+		print len(uploads), ' files will be uploaded'
 
 	# Upload files.
 	print 'Uploading...'
@@ -469,15 +484,20 @@ def usage():
 			-c	The optional config file. If it is not given, config.txt is used. 
 				This file contains the user's AWS secret and key, and some general 
 				configuration values.
+			-i 	Skip the inventory check. This will skip requesting and/or downloading
+				the inventory, and will skip checking the local files against the 
+				local database. Uploading will start immediately using the local
+				database as the upload file list.
 	'''
 
 if __name__ == '__main__':
 
 	try:
 
-		opts, args = getopt.getopt(sys.argv[1:], 'rc:', ['regenerate', 'config='])
+		opts, args = getopt.getopt(sys.argv[1:], 'irc:', ['skip_inventory', 'regenerate', 'config='])
 
 		regenerate = False
+		skipInventory = False
 		config = 'config.txt'
 
 		for opt, arg in opts:
@@ -485,8 +505,10 @@ if __name__ == '__main__':
 				regenerate = True
 			elif opt in ('-c', '--config'):
 				config = arg
+			elif opt in ('-i', '--skip_inventory'):
+				skipInventory = True
 
-		run(config, regenerate)
+		run(config, regenerate, skipInventory)
 
 	except Exception, e:
 		print e.__str__()
