@@ -1,3 +1,7 @@
+config_test.txt
+glacier.db
+glacier_inventory_job_id.txt
+glacier_hashes.txt
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
