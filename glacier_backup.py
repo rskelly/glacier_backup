@@ -12,12 +12,10 @@ import re
 import traceback
 import getopt
 
-AWS_ACCESS_KEY_ID = None
-AWS_SECRET_ACCESS_KEY = None
 root = None
-bucket = None
 vault_name = None
 file_filter = None
+region_name = None
 
 def load_config(config):
 	with open(config, 'rU') as f:
